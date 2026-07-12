@@ -40,10 +40,15 @@ struct SkeletonOverlayView: View {
                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
             }
 
+            // Knees are drawn at the same radius as the reference knee target
+            // circles, so the live and target circles are directly comparable.
+            let kneeRadius = onTargetRadius(in: size) * 0.6
+
             for (name, point) in pose.joints {
                 let center = viewPoint(for: point, in: size)
+                let isKnee = name == .leftKnee || name == .rightKnee
                 let isKeyJoint = Self.highlightedJoints.contains(name)
-                let radius: CGFloat = isKeyJoint ? 7 : 5
+                let radius: CGFloat = isKnee ? kneeRadius : (isKeyJoint ? 7 : 5)
                 let rect = CGRect(x: center.x - radius, y: center.y - radius,
                                   width: radius * 2, height: radius * 2)
                 context.fill(Path(ellipseIn: rect),
