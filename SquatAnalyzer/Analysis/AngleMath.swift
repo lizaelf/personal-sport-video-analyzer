@@ -23,18 +23,4 @@ enum AngleMath {
     static func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
         hypot(a.x - b.x, a.y - b.y)
     }
-
-    /// How far the torso (hip→shoulder) tilts from vertical. 0° = upright, larger = more forward lean.
-    static func leanFromVertical(shoulder: CGPoint, hip: CGPoint) -> Double {
-        let torso = CGVector(dx: shoulder.x - hip.x, dy: shoulder.y - hip.y)
-        let verticalUp = CGVector(dx: 0, dy: -1)
-
-        let magTorso = hypot(torso.dx, torso.dy)
-        guard magTorso > 0 else { return 0 }
-
-        let dot = torso.dx * verticalUp.dx + torso.dy * verticalUp.dy
-        let cosAngle = min(1, max(-1, dot / magTorso))
-
-        return acos(cosAngle) * 180 / .pi
-    }
 }

@@ -56,12 +56,11 @@ struct ContentView: View {
 
             VStack {
                 statusBar
-                viewModePicker
                 Spacer()
                 if !viewModel.isReceivingFrames {
                     WaitingForCameraView()
                 } else if !viewModel.frame.isBodyVisible {
-                    PositioningHintView(viewMode: viewModel.frame.viewMode)
+                    PositioningHintView()
                 }
                 Spacer()
                 if let feedback = viewModel.feedback {
@@ -100,17 +99,12 @@ struct ContentView: View {
 
             Spacer()
 
-            VStack(spacing: 4) {
-                Text(viewModel.frame.phase.rawValue)
-                    .font(.subheadline.bold())
-                Text(viewModel.frame.viewMode.label)
-                    .font(.caption2.bold())
-                    .foregroundStyle(.white.opacity(0.75))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
+            Text(viewModel.frame.phase.rawValue)
+                .font(.subheadline.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
 
             Spacer()
 
@@ -126,23 +120,9 @@ struct ContentView: View {
         }
     }
 
-    private var viewModePicker: some View {
-        Picker("Ракурс", selection: $viewModel.modeSelection) {
-            ForEach(ViewModeSelection.allCases) { selection in
-                Text(selection.rawValue).tag(selection)
-            }
-        }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: 320)
-        .padding(.top, 8)
-    }
-
     private var formReadout: some View {
         HStack(spacing: 10) {
             readoutCapsule(title: "Коліно", value: viewModel.frame.kneeAngle.map { "\(Int($0))°" } ?? "—")
-            if case .side = viewModel.frame.viewMode {
-                readoutCapsule(title: "Нахил", value: viewModel.frame.torsoLean.map { "\(Int($0))°" } ?? "—")
-            }
         }
     }
 
@@ -218,28 +198,17 @@ struct WaitingForCameraView: View {
 }
 
 struct PositioningHintView: View {
-    let viewMode: SquatViewMode
-
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: viewMode == .front ? "figure.stand" : "figure.walk")
+            Image(systemName: "figure.stand")
                 .font(.largeTitle)
-            Text(hint)
+            Text("Відійди назад так, щоб стегна, коліна і стопи були в кадрі")
                 .font(.callout.bold())
                 .multilineTextAlignment(.center)
         }
         .foregroundStyle(.white)
         .padding(20)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    private var hint: String {
-        switch viewMode {
-        case .front:
-            "Відійди назад так, щоб стегна, коліна і стопи були в кадрі"
-        case .side:
-            "Став боком до камери — має бути видно все тіло від голови до стоп"
-        }
     }
 }
 

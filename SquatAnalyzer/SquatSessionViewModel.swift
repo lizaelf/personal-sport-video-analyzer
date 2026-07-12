@@ -12,10 +12,8 @@ struct FrameState: Equatable {
     var pose: DetectedPose?
     var phase: SquatPhase = .standing
     var kneeAngle: Double?
-    var torsoLean: Double?
     var repCount = 0
     var isBodyVisible = false
-    var viewMode: SquatViewMode = .front
 }
 
 /// Wires the pipeline together:
@@ -33,11 +31,6 @@ final class SquatSessionViewModel: ObservableObject {
     @Published var cameraState: CameraState = .starting
     @Published var frame = FrameState()
     @Published var feedback: Feedback?
-    /// Авто / Спереду / Збоку switch. Forwarded to the analyzer, which restarts
-    /// phase tracking on change because the two views' thresholds differ.
-    @Published var modeSelection: ViewModeSelection = .auto {
-        didSet { analyzer.modeSelection = modeSelection }
-    }
     /// True once the camera has delivered at least one frame. Stays false in the
     /// iOS Simulator (no live capture), which the UI uses to explain the black view.
     @Published var isReceivingFrames = false
@@ -129,19 +122,28 @@ final class SquatSessionViewModel: ObservableObject {
             let smoothedPose = self.smoother.smooth(detected)
             let result = self.analyzer.analyze(smoothedPose)
 
+            let previousRepCount = self.frame.repCount
+
             // One atomic publish per frame.
             self.frame = FrameState(pose: smoothedPose,
                                     phase: result.phase,
                                     kneeAngle: result.kneeAngle,
-                                    torsoLean: result.torsoLean,
                                     repCount: result.repCount,
-                                    isBodyVisible: result.isBodyVisible,
-                                    viewMode: result.viewMode)
+                                    isBodyVisible: result.isBodyVisible)
 
             if let newFeedback = result.newFeedback {
                 self.show(newFeedback)
+            } else if result.repCount > previousRepCount {
+                speaker.speak(repCountUtterance(result.repCount))
             }
         }
+    }
+
+    private func repCountUtterance(_ count: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .spellOut
+        formatter.locale = Locale(identifier: "uk_UA")
+        return formatter.string(from: NSNumber(value: count)) ?? "\(count)"
     }
 
     private func show(_ newFeedback: Feedback) {
