@@ -21,16 +21,6 @@ struct SkeletonOverlayView: View {
         (.rightShoulder, .rightElbow), (.rightElbow, .rightWrist),
     ]
 
-    /// The subset of `bones` that the ghost reference outline draws — the
-    /// torso/leg silhouette, skipping arms since the targets don't track them.
-    private static let referenceBones: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
-        (.leftShoulder, .rightShoulder),
-        (.leftShoulder, .leftHip), (.rightShoulder, .rightHip),
-        (.leftHip, .rightHip),
-        (.leftHip, .leftKnee), (.leftKnee, .leftAnkle),
-        (.rightHip, .rightKnee), (.rightKnee, .rightAnkle),
-    ]
-
     private static let highlightedJoints: Set<VNHumanBodyPoseObservation.JointName> = [
         .leftKnee, .rightKnee, .leftHip, .rightHip, .leftAnkle, .rightAnkle,
     ]
@@ -38,7 +28,7 @@ struct SkeletonOverlayView: View {
     var body: some View {
         Canvas { context, size in
             if let reference {
-                drawReferenceOutline(reference, in: &context, size: size)
+                drawReferenceTargets(reference, in: &context, size: size)
             }
 
             for (from, to) in Self.bones {
@@ -63,70 +53,47 @@ struct SkeletonOverlayView: View {
         .allowsHitTesting(false)
     }
 
-    /// A dashed "ghost" posture outline at the target squat position: the
-    /// same shoulder–hip–knee–ankle silhouette as the live skeleton, but
-    /// drawn at the calibrated bottom-of-squat targets. Each joint marker
-    /// turns green once the athlete's live joint is close enough to it, and
-    /// a bone segment turns solid green once both its endpoints are on
-    /// target — so the outline "fills in" green as posture is achieved.
-    private func drawReferenceOutline(_ reference: ReferencePose,
+    /// Static target circles at the bottom-of-squat positions measured from
+    /// the reference video and scaled to this athlete: one circle per knee
+    /// (the spot to drive the knee into — it fills green when hit) and a tiny
+    /// dot per foot (where the feet should stay planted).
+    private func drawReferenceTargets(_ reference: ReferencePose,
                                       in context: inout GraphicsContext,
                                       size: CGSize) {
         let tolerance = onTargetRadius(in: size)
         guard tolerance > 0 else { return }
 
-        var onTarget: [VNHumanBodyPoseObservation.JointName: Bool] = [:]
-        for (joint, target) in reference.targets {
-            guard let live = pose[joint] else {
-                onTarget[joint] = false
-                continue
-            }
-            let livePoint = viewPoint(for: live, in: size)
-            let targetPoint = viewPoint(for: target, in: size)
-            onTarget[joint] = hypot(livePoint.x - targetPoint.x, livePoint.y - targetPoint.y) <= tolerance
-        }
+        let kneeRadius = tolerance * 0.6
+        let footRadius = kneeRadius / 10
 
-        for (from, to) in Self.referenceBones {
-            guard let a = reference.targets[from], let b = reference.targets[to] else { continue }
-            let bothOnTarget = (onTarget[from] ?? false) && (onTarget[to] ?? false)
-
-            var path = Path()
-            path.move(to: viewPoint(for: a, in: size))
-            path.addLine(to: viewPoint(for: b, in: size))
-            context.stroke(path,
-                           with: .color(bothOnTarget ? .green : .pink),
-                           style: StrokeStyle(lineWidth: 90, lineCap: .round,
-                                              dash: bothOnTarget ? [] : [100, 70]))
-        }
-
-        for (joint, target) in reference.targets {
-            let center = viewPoint(for: target, in: size)
-            let isOnTarget = onTarget[joint] ?? false
-            let radius: CGFloat = 100
-            let rect = CGRect(x: center.x - radius, y: center.y - radius,
-                              width: radius * 2, height: radius * 2)
-            context.fill(Path(ellipseIn: rect),
-                         with: .color(isOnTarget ? .green : .pink))
-        }
-
-        // Static knee-target circles: the exact spots (from the reference
-        // video, scaled to this athlete) the knees should reach at the bottom.
-        // The circle radius is the hit tolerance, so "knee inside the circle"
-        // is literally the goal; it fills green when achieved.
-        let kneeRadius = tolerance
         for joint: VNHumanBodyPoseObservation.JointName in [.leftKnee, .rightKnee] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
+            let isOnTarget: Bool
+            if let live = pose[joint] {
+                let livePoint = viewPoint(for: live, in: size)
+                isOnTarget = hypot(livePoint.x - center.x, livePoint.y - center.y) <= tolerance
+            } else {
+                isOnTarget = false
+            }
+
             let rect = CGRect(x: center.x - kneeRadius, y: center.y - kneeRadius,
                               width: kneeRadius * 2, height: kneeRadius * 2)
             let circle = Path(ellipseIn: rect)
-            let isOnTarget = onTarget[joint] ?? false
             if isOnTarget {
                 context.fill(circle, with: .color(.green.opacity(0.4)))
             }
             context.stroke(circle,
                            with: .color(isOnTarget ? .green : .white),
-                           style: StrokeStyle(lineWidth: 10))
+                           style: StrokeStyle(lineWidth: 6))
+        }
+
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftAnkle, .rightAnkle] {
+            guard let target = reference.targets[joint] else { continue }
+            let center = viewPoint(for: target, in: size)
+            let rect = CGRect(x: center.x - footRadius, y: center.y - footRadius,
+                              width: footRadius * 2, height: footRadius * 2)
+            context.fill(Path(ellipseIn: rect), with: .color(.white))
         }
     }
 
