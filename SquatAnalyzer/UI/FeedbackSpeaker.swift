@@ -64,9 +64,16 @@ final class FeedbackSpeaker: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func preferredVoice() -> AVSpeechSynthesisVoice? {
-        AVSpeechSynthesisVoice(language: "uk-UA")
-            ?? AVSpeechSynthesisVoice(language: "uk")
-            ?? AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        maleVoice(languagePrefixes: ["uk-UA", "uk"])
+            ?? AVSpeechSynthesisVoice(language: "uk-UA")
+            ?? maleVoice(languagePrefixes: ["en-US", "en"])
             ?? AVSpeechSynthesisVoice(language: "en-US")
+    }
+
+    private func maleVoice(languagePrefixes: [String]) -> AVSpeechSynthesisVoice? {
+        AVSpeechSynthesisVoice.speechVoices().first { voice in
+            voice.gender == .male
+                && languagePrefixes.contains { voice.language.hasPrefix($0) }
+        }
     }
 }
