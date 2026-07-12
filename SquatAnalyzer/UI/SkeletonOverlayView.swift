@@ -40,19 +40,27 @@ struct SkeletonOverlayView: View {
                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
             }
 
-            // Knees are drawn at the same radius as the reference knee target
-            // circles, so the live and target circles are directly comparable.
-            let kneeRadius = onTargetRadius(in: size) * 0.6
+            // Knees and hips are drawn at the same size/shape as their
+            // reference target circle/pill, so live and target are directly comparable.
+            let targetRadius = onTargetRadius(in: size) * 0.6
 
             for (name, point) in pose.joints {
+                guard name != .leftHip, name != .rightHip else { continue }
                 let center = viewPoint(for: point, in: size)
                 let isKnee = name == .leftKnee || name == .rightKnee
                 let isKeyJoint = Self.highlightedJoints.contains(name)
-                let radius: CGFloat = isKnee ? kneeRadius : (isKeyJoint ? 7 : 5)
+                let radius: CGFloat = isKnee ? targetRadius : (isKeyJoint ? 7 : 5)
                 let rect = CGRect(x: center.x - radius, y: center.y - radius,
                                   width: radius * 2, height: radius * 2)
                 context.fill(Path(ellipseIn: rect),
                              with: .color(isKeyJoint ? .yellow : .white))
+            }
+
+            if let leftHip = pose[.leftHip], let rightHip = pose[.rightHip] {
+                let pill = pillPath(from: viewPoint(for: leftHip, in: size),
+                                    to: viewPoint(for: rightHip, in: size),
+                                    radius: targetRadius)
+                context.fill(pill, with: .color(.yellow))
             }
         }
         .allowsHitTesting(false)
@@ -128,19 +136,25 @@ struct SkeletonOverlayView: View {
         }
         let bothOnTarget = isOnTarget(.leftHip, target: leftPoint) && isOnTarget(.rightHip, target: rightPoint)
 
-        let minX = min(leftPoint.x, rightPoint.x) - targetRadius
-        let maxX = max(leftPoint.x, rightPoint.x) + targetRadius
-        let midY = (leftPoint.y + rightPoint.y) / 2
-        let rect = CGRect(x: minX, y: midY - targetRadius,
-                          width: maxX - minX, height: targetRadius * 2)
-        let pill = Path(roundedRect: rect, cornerRadius: 999)
-
+        let pill = pillPath(from: leftPoint, to: rightPoint, radius: targetRadius)
         if bothOnTarget {
             context.fill(pill, with: .color(.green.opacity(0.4)))
         }
         context.stroke(pill,
                        with: .color(bothOnTarget ? .green : .white),
                        style: StrokeStyle(lineWidth: 6))
+    }
+
+    /// A pill (rounded rectangle, corner radius 999 → fully rounded ends)
+    /// spanning two points with the given half-height radius — used for both
+    /// the reference hip target and the live hip marker, so they match in shape.
+    private func pillPath(from: CGPoint, to: CGPoint, radius: CGFloat) -> Path {
+        let minX = min(from.x, to.x) - radius
+        let maxX = max(from.x, to.x) + radius
+        let midY = (from.y + to.y) / 2
+        let rect = CGRect(x: minX, y: midY - radius,
+                          width: maxX - minX, height: radius * 2)
+        return Path(roundedRect: rect, cornerRadius: 999)
     }
 
     /// The on-screen distance matching the normalized "on target" tolerance.
