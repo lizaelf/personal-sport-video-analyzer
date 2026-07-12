@@ -18,7 +18,14 @@ struct DetectedPose: Equatable {
 /// callback without crossing an actor boundary.
 struct PoseDetector: Sendable {
 
-    private let minimumConfidence: Float = 0.3
+    private static func minimumConfidence(for joint: VNHumanBodyPoseObservation.JointName) -> Float {
+        switch joint {
+        case .leftShoulder, .rightShoulder, .neck:
+            0.2
+        default:
+            0.3
+        }
+    }
 
     func detectPose(in pixelBuffer: CVPixelBuffer) -> DetectedPose? {
         let request = VNDetectHumanBodyPoseRequest()
@@ -31,7 +38,9 @@ struct PoseDetector: Sendable {
         else { return nil }
 
         var joints: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
-        for (name, point) in recognized where point.confidence > minimumConfidence {
+        for (name, point) in recognized {
+            let threshold = Self.minimumConfidence(for: name)
+            guard point.confidence > threshold else { continue }
             // Vision uses a bottom-left origin; flip Y for screen coordinates.
             joints[name] = CGPoint(x: point.location.x, y: 1 - point.location.y)
         }

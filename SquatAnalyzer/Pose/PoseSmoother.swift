@@ -11,6 +11,7 @@ struct PoseSmoother {
 
     private var smoothed: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
     private var missingCounts: [VNHumanBodyPoseObservation.JointName: Int] = [:]
+    private var shoulderOffsetFromNeck: [VNHumanBodyPoseObservation.JointName: CGVector] = [:]
 
     mutating func smooth(_ pose: DetectedPose) -> DetectedPose {
         var result = pose
@@ -37,11 +38,35 @@ struct PoseSmoother {
                 }
             }
         }
+
+        recoverShoulders(in: &result)
         return result
     }
 
     mutating func reset() {
         smoothed.removeAll()
         missingCounts.removeAll()
+        shoulderOffsetFromNeck.removeAll()
+    }
+
+    /// Vision often drops shoulders during a squat; estimate them from the neck
+    /// using the last known shoulder–neck offset so the live markers keep moving.
+    private mutating func recoverShoulders(in result: inout DetectedPose) {
+        guard let neck = result.joints[.neck] ?? smoothed[.neck] else { return }
+
+        for shoulder in [VNHumanBodyPoseObservation.JointName.leftShoulder,
+                         .rightShoulder] {
+            if let detected = result.joints[shoulder] {
+                shoulderOffsetFromNeck[shoulder] = CGVector(dx: detected.x - neck.x,
+                                                            dy: detected.y - neck.y)
+                continue
+            }
+
+            guard let offset = shoulderOffsetFromNeck[shoulder] else { continue }
+            let estimated = CGPoint(x: neck.x + offset.dx, y: neck.y + offset.dy)
+            result.joints[shoulder] = estimated
+            smoothed[shoulder] = estimated
+            missingCounts[shoulder] = 0
+        }
     }
 }

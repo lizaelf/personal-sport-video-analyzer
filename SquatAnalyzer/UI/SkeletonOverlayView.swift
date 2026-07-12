@@ -10,6 +10,7 @@ struct SkeletonOverlayView: View {
     let pose: DetectedPose
     /// Bottom-position targets, drawn as a ghost posture outline the athlete steers into.
     var reference: ReferencePose?
+    var phase: SquatPhase = .standing
 
     private static let bones: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
         (.leftShoulder, .rightShoulder),
@@ -19,10 +20,6 @@ struct SkeletonOverlayView: View {
         (.rightHip, .rightKnee), (.rightKnee, .rightAnkle),
         (.leftShoulder, .leftElbow), (.leftElbow, .leftWrist),
         (.rightShoulder, .rightElbow), (.rightElbow, .rightWrist),
-    ]
-
-    private static let highlightedJoints: Set<VNHumanBodyPoseObservation.JointName> = [
-        .leftKnee, .rightKnee, .leftHip, .rightHip, .leftAnkle, .rightAnkle,
     ]
 
     var body: some View {
@@ -36,47 +33,64 @@ struct SkeletonOverlayView: View {
                 var path = Path()
                 path.move(to: viewPoint(for: a, in: size))
                 path.addLine(to: viewPoint(for: b, in: size))
-                context.stroke(path, with: .color(.green.opacity(0.9)),
+                context.stroke(path, with: .color(boneColor(from: from, to: to)),
                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
             }
 
-            // Knees are drawn at the same size as their reference target
-            // circle, so live and target are directly comparable.
             let targetRadius = onTargetRadius(in: size) * 0.6
-            // The hip pill uses a smaller half-height than the knee radius —
-            // otherwise, at a normal (narrower) stance, hip separation on
-            // screen is comparable to the radius and the "pill" degenerates
-            // into a circle instead of reading as a rectangle.
             let hipBarRadius = targetRadius * 0.35
+            let shoulderRadius: CGFloat = 7
 
             for (name, point) in pose.joints {
                 guard name != .leftHip, name != .rightHip else { continue }
                 let center = viewPoint(for: point, in: size)
-                let isKnee = name == .leftKnee || name == .rightKnee
-                let isKeyJoint = Self.highlightedJoints.contains(name)
-                let radius: CGFloat = isKnee ? targetRadius : (isKeyJoint ? 7 : 5)
+
+                if JointColors.shoulderJoints.contains(name) {
+                    let rect = CGRect(x: center.x - shoulderRadius, y: center.y - shoulderRadius,
+                                      width: shoulderRadius * 2, height: shoulderRadius * 2)
+                    let dot = Path(ellipseIn: rect)
+                    context.fill(dot, with: .color(JointColors.shoulder))
+                    context.stroke(dot, with: .color(.white.opacity(0.9)),
+                                   style: StrokeStyle(lineWidth: 2))
+                    continue
+                }
+
+                if JointColors.kneeJoints.contains(name) {
+                    let rect = CGRect(x: center.x - targetRadius, y: center.y - targetRadius,
+                                      width: targetRadius * 2, height: targetRadius * 2)
+                    context.fill(Path(ellipseIn: rect), with: .color(JointColors.knee))
+                    continue
+                }
+
+                let radius: CGFloat = 5
                 let rect = CGRect(x: center.x - radius, y: center.y - radius,
                                   width: radius * 2, height: radius * 2)
-                context.fill(Path(ellipseIn: rect),
-                             with: .color(isKeyJoint ? .yellow : .white))
+                context.fill(Path(ellipseIn: rect), with: .color(.white))
             }
 
             if let leftHip = pose[.leftHip], let rightHip = pose[.rightHip] {
                 let pill = pillPath(from: viewPoint(for: leftHip, in: size),
                                     to: viewPoint(for: rightHip, in: size),
                                     radius: hipBarRadius)
-                context.fill(pill, with: .color(.yellow))
+                context.fill(pill, with: .color(JointColors.hip))
             }
         }
         .allowsHitTesting(false)
     }
 
+    private func boneColor(from: VNHumanBodyPoseObservation.JointName,
+                           to: VNHumanBodyPoseObservation.JointName) -> Color {
+        if JointColors.color(for: from) != nil || JointColors.color(for: to) != nil {
+            return JointColors.color(for: from) ?? JointColors.color(for: to) ?? .green
+        }
+        return .green.opacity(0.9)
+    }
+
     /// Static target shapes at the bottom-of-squat positions measured from
     /// the reference video and scaled to this athlete: one pill spanning both
     /// hip targets, one circle per shoulder and per knee (the spots to drive
-    /// into — each fills green when hit), and a tiny dot per shoulder and per
-    /// foot marking the standing-level positions (shoulder starting height,
-    /// planted foot position).
+    /// into — each fills when hit), and a tiny dot per shoulder and per
+    /// foot marking the standing-level positions.
     private func drawReferenceTargets(_ reference: ReferencePose,
                                       in context: inout GraphicsContext,
                                       size: CGSize) {
@@ -84,46 +98,27 @@ struct SkeletonOverlayView: View {
         guard tolerance > 0 else { return }
 
         let targetRadius = tolerance * 0.6
-        // Fixed markers for standing-level joints (shoulders, feet) — they
-        // don't move during the squat. Sized close to the knee radius and
-        // colored yellow so they're clearly visible against any background.
         let standingMarkerRadius = targetRadius * 0.5
-        // Smaller half-height than the knee radius, so the hip pill reads as
-        // a flat rectangle instead of degenerating into a circle at a normal
-        // (narrower) stance where hip separation is comparable to the radius.
         let hipBarRadius = targetRadius * 0.35
 
         drawHipBar(reference, tolerance: tolerance, barRadius: hipBarRadius,
-                  in: &context, size: size)
+                   color: JointColors.hip, in: &context, size: size)
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftShoulder, .rightShoulder, .leftKnee, .rightKnee] {
-            guard let target = reference.targets[joint] else { continue }
-            let center = viewPoint(for: target, in: size)
-            let isOnTarget: Bool
-            if let live = pose[joint] {
-                let livePoint = viewPoint(for: live, in: size)
-                isOnTarget = hypot(livePoint.x - center.x, livePoint.y - center.y) <= tolerance
-            } else {
-                isOnTarget = false
-            }
-
-            let rect = CGRect(x: center.x - targetRadius, y: center.y - targetRadius,
-                              width: targetRadius * 2, height: targetRadius * 2)
-            let circle = Path(ellipseIn: rect)
-            if isOnTarget {
-                context.fill(circle, with: .color(.green.opacity(0.4)))
-            }
-            context.stroke(circle,
-                           with: .color(isOnTarget ? .green : .white),
-                           style: StrokeStyle(lineWidth: 6))
+        for joint in JointColors.shoulderJoints.union(JointColors.kneeJoints) {
+            guard let target = reference.targets[joint],
+                  let color = JointColors.color(for: joint) else { continue }
+            drawTargetCircle(joint: joint, target: target, color: color,
+                             radius: targetRadius, tolerance: tolerance,
+                             in: &context, size: size)
         }
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftShoulder, .rightShoulder] {
-            guard let marker = reference.standingMarkers[joint] else { continue }
+        for joint in JointColors.shoulderJoints {
+            guard phase == .standing,
+                  let marker = reference.standingMarkers[joint] else { continue }
             let center = viewPoint(for: marker, in: size)
             let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,
                               width: standingMarkerRadius * 2, height: standingMarkerRadius * 2)
-            context.fill(Path(ellipseIn: rect), with: .color(.yellow))
+            context.fill(Path(ellipseIn: rect), with: .color(JointColors.shoulder.opacity(0.5)))
         }
 
         for joint: VNHumanBodyPoseObservation.JointName in [.leftAnkle, .rightAnkle] {
@@ -131,16 +126,42 @@ struct SkeletonOverlayView: View {
             let center = viewPoint(for: target, in: size)
             let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,
                               width: standingMarkerRadius * 2, height: standingMarkerRadius * 2)
-            context.fill(Path(ellipseIn: rect), with: .color(.yellow))
+            context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.6)))
         }
     }
 
-    /// One solid pill (rounded rectangle, corner radius 999 → fully rounded
-    /// ends) spanning both hip targets, instead of two separate circles.
-    /// Fills green once both hips are on target.
+    private func drawTargetCircle(joint: VNHumanBodyPoseObservation.JointName,
+                                  target: CGPoint,
+                                  color: Color,
+                                  radius: CGFloat,
+                                  tolerance: CGFloat,
+                                  in context: inout GraphicsContext,
+                                  size: CGSize) {
+        let center = viewPoint(for: target, in: size)
+        let isOnTarget: Bool
+        if let live = pose[joint] {
+            let livePoint = viewPoint(for: live, in: size)
+            isOnTarget = hypot(livePoint.x - center.x, livePoint.y - center.y) <= tolerance
+        } else {
+            isOnTarget = false
+        }
+
+        let rect = CGRect(x: center.x - radius, y: center.y - radius,
+                          width: radius * 2, height: radius * 2)
+        let circle = Path(ellipseIn: rect)
+        if isOnTarget {
+            context.fill(circle, with: .color(color.opacity(0.35)))
+        }
+        context.stroke(circle,
+                       with: .color(color),
+                       style: StrokeStyle(lineWidth: 6))
+    }
+
+    /// One solid pill spanning both hip targets. Outline and fill use the hip color.
     private func drawHipBar(_ reference: ReferencePose,
                             tolerance: CGFloat,
                             barRadius: CGFloat,
+                            color: Color,
                             in context: inout GraphicsContext,
                             size: CGSize) {
         guard
@@ -160,16 +181,13 @@ struct SkeletonOverlayView: View {
 
         let pill = pillPath(from: leftPoint, to: rightPoint, radius: barRadius)
         if bothOnTarget {
-            context.fill(pill, with: .color(.green.opacity(0.4)))
+            context.fill(pill, with: .color(color.opacity(0.35)))
         }
         context.stroke(pill,
-                       with: .color(bothOnTarget ? .green : .white),
+                       with: .color(color),
                        style: StrokeStyle(lineWidth: 6))
     }
 
-    /// A pill (rounded rectangle, corner radius 999 → fully rounded ends)
-    /// spanning two points with the given half-height radius — used for both
-    /// the reference hip target and the live hip marker, so they match in shape.
     private func pillPath(from: CGPoint, to: CGPoint, radius: CGFloat) -> Path {
         let minX = min(from.x, to.x) - radius
         let maxX = max(from.x, to.x) + radius
@@ -179,7 +197,6 @@ struct SkeletonOverlayView: View {
         return Path(roundedRect: rect, cornerRadius: 999)
     }
 
-    /// The on-screen distance matching the normalized "on target" tolerance.
     private func onTargetRadius(in viewSize: CGSize) -> CGFloat {
         let imageSize = pose.imageSize
         guard imageSize.width > 0, imageSize.height > 0 else { return 0 }
@@ -187,7 +204,6 @@ struct SkeletonOverlayView: View {
         return ReferencePose.tolerance * imageSize.height * scale
     }
 
-    /// Maps a normalized image point into view coordinates under aspect-fill.
     private func viewPoint(for normalized: CGPoint, in viewSize: CGSize) -> CGPoint {
         let imageSize = pose.imageSize
         guard imageSize.width > 0, imageSize.height > 0 else { return .zero }
