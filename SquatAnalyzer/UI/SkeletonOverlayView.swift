@@ -95,6 +95,7 @@ struct SkeletonOverlayView: View {
 
         let targetRadius = tolerance * 0.6
         let standingMarkerRadius = targetRadius * 0.5
+        let footMarkerRadius = targetRadius * 0.9
         let hipBarRadius = targetRadius * 0.35
 
         drawHipBar(reference, tolerance: tolerance, barRadius: hipBarRadius,
@@ -120,8 +121,8 @@ struct SkeletonOverlayView: View {
         for joint: VNHumanBodyPoseObservation.JointName in [.leftAnkle, .rightAnkle] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
-            let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,
-                              width: standingMarkerRadius * 2, height: standingMarkerRadius * 2)
+            let rect = CGRect(x: center.x - footMarkerRadius, y: center.y - footMarkerRadius,
+                              width: footMarkerRadius * 2, height: footMarkerRadius * 2)
             context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.6)))
         }
     }
