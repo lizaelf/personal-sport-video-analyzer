@@ -54,19 +54,19 @@ struct SkeletonOverlayView: View {
     }
 
     /// Static target circles at the bottom-of-squat positions measured from
-    /// the reference video and scaled to this athlete: one circle per knee
-    /// (the spot to drive the knee into — it fills green when hit) and a tiny
-    /// dot per foot (where the feet should stay planted).
+    /// the reference video and scaled to this athlete: one circle per hip and
+    /// per knee (the spots to drive into — each fills green when hit) and a
+    /// tiny dot per foot (where the feet should stay planted).
     private func drawReferenceTargets(_ reference: ReferencePose,
                                       in context: inout GraphicsContext,
                                       size: CGSize) {
         let tolerance = onTargetRadius(in: size)
         guard tolerance > 0 else { return }
 
-        let kneeRadius = tolerance * 0.6
-        let footRadius = kneeRadius / 10
+        let targetRadius = tolerance * 0.6
+        let footRadius = targetRadius / 10
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftKnee, .rightKnee] {
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftHip, .rightHip, .leftKnee, .rightKnee] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
             let isOnTarget: Bool
@@ -77,8 +77,8 @@ struct SkeletonOverlayView: View {
                 isOnTarget = false
             }
 
-            let rect = CGRect(x: center.x - kneeRadius, y: center.y - kneeRadius,
-                              width: kneeRadius * 2, height: kneeRadius * 2)
+            let rect = CGRect(x: center.x - targetRadius, y: center.y - targetRadius,
+                              width: targetRadius * 2, height: targetRadius * 2)
             let circle = Path(ellipseIn: rect)
             if isOnTarget {
                 context.fill(circle, with: .color(.green.opacity(0.4)))
