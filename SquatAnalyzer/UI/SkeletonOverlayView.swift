@@ -40,9 +40,14 @@ struct SkeletonOverlayView: View {
                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
             }
 
-            // Knees and hips are drawn at the same size/shape as their
-            // reference target circle/pill, so live and target are directly comparable.
+            // Knees are drawn at the same size as their reference target
+            // circle, so live and target are directly comparable.
             let targetRadius = onTargetRadius(in: size) * 0.6
+            // The hip pill uses a smaller half-height than the knee radius —
+            // otherwise, at a normal (narrower) stance, hip separation on
+            // screen is comparable to the radius and the "pill" degenerates
+            // into a circle instead of reading as a rectangle.
+            let hipBarRadius = targetRadius * 0.35
 
             for (name, point) in pose.joints {
                 guard name != .leftHip, name != .rightHip else { continue }
@@ -59,7 +64,7 @@ struct SkeletonOverlayView: View {
             if let leftHip = pose[.leftHip], let rightHip = pose[.rightHip] {
                 let pill = pillPath(from: viewPoint(for: leftHip, in: size),
                                     to: viewPoint(for: rightHip, in: size),
-                                    radius: targetRadius)
+                                    radius: hipBarRadius)
                 context.fill(pill, with: .color(.yellow))
             }
         }
@@ -69,7 +74,8 @@ struct SkeletonOverlayView: View {
     /// Static target shapes at the bottom-of-squat positions measured from
     /// the reference video and scaled to this athlete: one pill spanning both
     /// hip targets, one circle per knee (the spots to drive into — each fills
-    /// green when hit), and a tiny dot per foot (where the feet should stay planted).
+    /// green when hit), and a tiny dot per shoulder and per foot marking the
+    /// standing-level positions (shoulders stay upright, feet stay planted).
     private func drawReferenceTargets(_ reference: ReferencePose,
                                       in context: inout GraphicsContext,
                                       size: CGSize) {
@@ -77,9 +83,15 @@ struct SkeletonOverlayView: View {
         guard tolerance > 0 else { return }
 
         let targetRadius = tolerance * 0.6
-        let footRadius = targetRadius / 10
+        // Small fixed markers for standing-level joints (shoulders, feet) —
+        // they don't move during the squat, so a tiny dot is enough.
+        let standingMarkerRadius = targetRadius / 10
+        // Smaller half-height than the knee radius, so the hip pill reads as
+        // a flat rectangle instead of degenerating into a circle at a normal
+        // (narrower) stance where hip separation is comparable to the radius.
+        let hipBarRadius = targetRadius * 0.35
 
-        drawHipBar(reference, tolerance: tolerance, targetRadius: targetRadius,
+        drawHipBar(reference, tolerance: tolerance, barRadius: hipBarRadius,
                   in: &context, size: size)
 
         for joint: VNHumanBodyPoseObservation.JointName in [.leftKnee, .rightKnee] {
@@ -104,11 +116,11 @@ struct SkeletonOverlayView: View {
                            style: StrokeStyle(lineWidth: 6))
         }
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftAnkle, .rightAnkle] {
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftShoulder, .rightShoulder, .leftAnkle, .rightAnkle] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
-            let rect = CGRect(x: center.x - footRadius, y: center.y - footRadius,
-                              width: footRadius * 2, height: footRadius * 2)
+            let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,
+                              width: standingMarkerRadius * 2, height: standingMarkerRadius * 2)
             context.fill(Path(ellipseIn: rect), with: .color(.white))
         }
     }
@@ -118,7 +130,7 @@ struct SkeletonOverlayView: View {
     /// Fills green once both hips are on target.
     private func drawHipBar(_ reference: ReferencePose,
                             tolerance: CGFloat,
-                            targetRadius: CGFloat,
+                            barRadius: CGFloat,
                             in context: inout GraphicsContext,
                             size: CGSize) {
         guard
@@ -136,7 +148,7 @@ struct SkeletonOverlayView: View {
         }
         let bothOnTarget = isOnTarget(.leftHip, target: leftPoint) && isOnTarget(.rightHip, target: rightPoint)
 
-        let pill = pillPath(from: leftPoint, to: rightPoint, radius: targetRadius)
+        let pill = pillPath(from: leftPoint, to: rightPoint, radius: barRadius)
         if bothOnTarget {
             context.fill(pill, with: .color(.green.opacity(0.4)))
         }
