@@ -1,13 +1,13 @@
 import CoreGraphics
 import Vision
 
-/// Target joint positions for the bottom of a proper squat, shown as rings the
-/// athlete steers into while descending.
+/// Target joint positions for the bottom of a proper squat, drawn as a ghost
+/// posture outline the athlete steers into while descending.
 struct ReferencePose: Equatable {
     var targets: [VNHumanBodyPoseObservation.JointName: CGPoint]
 
     /// Normalized distance (fraction of image height) within which a live
-    /// joint counts as "on target". Also used as the ring radius on screen.
+    /// joint counts as "on target".
     static let tolerance: CGFloat = 0.045
 }
 
@@ -35,6 +35,7 @@ struct ReferencePoseCalculator {
     private var baselineFrames = 0
 
     private static let trackedJoints: [JointName] = [
+        .leftShoulder, .rightShoulder,
         .leftHip, .rightHip, .leftKnee, .rightKnee, .leftAnkle, .rightAnkle,
     ]
 
@@ -67,20 +68,24 @@ struct ReferencePoseCalculator {
         baselineFrames = min(baselineFrames + 1, 1000)
     }
 
-    /// Hips sink to knee height, knees track out over the feet, feet stay planted.
+    /// Shoulders stay upright at standing height (chest up), hips sink to knee
+    /// height, knees track out over the feet, feet stay planted.
     private func frontTargets() -> [JointName: CGPoint] {
         var targets: [JointName: CGPoint] = [:]
 
-        let chains: [(JointName, JointName, JointName)] = [
-            (.leftHip, .leftKnee, .leftAnkle),
-            (.rightHip, .rightKnee, .rightAnkle),
+        let chains: [(JointName, JointName, JointName, JointName)] = [
+            (.leftShoulder, .leftHip, .leftKnee, .leftAnkle),
+            (.rightShoulder, .rightHip, .rightKnee, .rightAnkle),
         ]
-        for (hip, knee, ankle) in chains {
+        for (shoulder, hip, knee, ankle) in chains {
             guard let h = baseline[hip], let k = baseline[knee], let a = baseline[ankle] else { continue }
             let shin = abs(a.y - k.y)
             targets[hip] = CGPoint(x: h.x, y: k.y)
             targets[knee] = CGPoint(x: a.x, y: k.y + shin * kneeDrop)
             targets[ankle] = a
+            if let s = baseline[shoulder] {
+                targets[shoulder] = s
+            }
         }
         return targets
     }

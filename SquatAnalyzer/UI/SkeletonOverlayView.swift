@@ -8,7 +8,7 @@ import Vision
 /// skeleton aligned with the video.
 struct SkeletonOverlayView: View {
     let pose: DetectedPose
-    /// Bottom-position targets, drawn as rings the athlete steers into.
+    /// Bottom-position targets, drawn as a ghost posture outline the athlete steers into.
     var reference: ReferencePose?
 
     private static let bones: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
@@ -21,6 +21,16 @@ struct SkeletonOverlayView: View {
         (.rightShoulder, .rightElbow), (.rightElbow, .rightWrist),
     ]
 
+    /// The subset of `bones` that the ghost reference outline draws — the
+    /// torso/leg silhouette, skipping arms since the targets don't track them.
+    private static let referenceBones: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
+        (.leftShoulder, .rightShoulder),
+        (.leftShoulder, .leftHip), (.rightShoulder, .rightHip),
+        (.leftHip, .rightHip),
+        (.leftHip, .leftKnee), (.leftKnee, .leftAnkle),
+        (.rightHip, .rightKnee), (.rightKnee, .rightAnkle),
+    ]
+
     private static let highlightedJoints: Set<VNHumanBodyPoseObservation.JointName> = [
         .leftKnee, .rightKnee, .leftHip, .rightHip, .leftAnkle, .rightAnkle,
     ]
@@ -28,7 +38,7 @@ struct SkeletonOverlayView: View {
     var body: some View {
         Canvas { context, size in
             if let reference {
-                drawReferenceRings(reference, in: &context, size: size)
+                drawReferenceOutline(reference, in: &context, size: size)
             }
 
             for (from, to) in Self.bones {
@@ -53,39 +63,55 @@ struct SkeletonOverlayView: View {
         .allowsHitTesting(false)
     }
 
-    /// Dashed rings at each target joint position. A ring turns green and fills
-    /// when the matching live joint is inside it, so the athlete can steer
-    /// their posture into the targets mid-rep.
-    private func drawReferenceRings(_ reference: ReferencePose,
-                                    in context: inout GraphicsContext,
-                                    size: CGSize) {
-        let radius = ringRadius(in: size)
-        guard radius > 0 else { return }
+    /// A dashed "ghost" posture outline at the target squat position: the
+    /// same shoulder–hip–knee–ankle silhouette as the live skeleton, but
+    /// drawn at the calibrated bottom-of-squat targets. Each joint marker
+    /// turns green once the athlete's live joint is close enough to it, and
+    /// a bone segment turns solid green once both its endpoints are on
+    /// target — so the outline "fills in" green as posture is achieved.
+    private func drawReferenceOutline(_ reference: ReferencePose,
+                                      in context: inout GraphicsContext,
+                                      size: CGSize) {
+        let tolerance = onTargetRadius(in: size)
+        guard tolerance > 0 else { return }
+
+        var onTarget: [VNHumanBodyPoseObservation.JointName: Bool] = [:]
+        for (joint, target) in reference.targets {
+            guard let live = pose[joint] else {
+                onTarget[joint] = false
+                continue
+            }
+            let livePoint = viewPoint(for: live, in: size)
+            let targetPoint = viewPoint(for: target, in: size)
+            onTarget[joint] = hypot(livePoint.x - targetPoint.x, livePoint.y - targetPoint.y) <= tolerance
+        }
+
+        for (from, to) in Self.referenceBones {
+            guard let a = reference.targets[from], let b = reference.targets[to] else { continue }
+            let bothOnTarget = (onTarget[from] ?? false) && (onTarget[to] ?? false)
+
+            var path = Path()
+            path.move(to: viewPoint(for: a, in: size))
+            path.addLine(to: viewPoint(for: b, in: size))
+            context.stroke(path,
+                           with: .color(bothOnTarget ? .green : .cyan.opacity(0.85)),
+                           style: StrokeStyle(lineWidth: 4, lineCap: .round,
+                                              dash: bothOnTarget ? [] : [8, 6]))
+        }
 
         for (joint, target) in reference.targets {
             let center = viewPoint(for: target, in: size)
-            let onTarget: Bool
-            if let live = pose[joint] {
-                let livePoint = viewPoint(for: live, in: size)
-                onTarget = hypot(livePoint.x - center.x, livePoint.y - center.y) <= radius
-            } else {
-                onTarget = false
-            }
-
+            let isOnTarget = onTarget[joint] ?? false
+            let radius: CGFloat = 6
             let rect = CGRect(x: center.x - radius, y: center.y - radius,
                               width: radius * 2, height: radius * 2)
-            let ring = Path(ellipseIn: rect)
-            if onTarget {
-                context.fill(ring, with: .color(.green.opacity(0.25)))
-            }
-            context.stroke(ring,
-                           with: .color(onTarget ? .green : .cyan.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: 3, dash: [6, 4]))
+            context.fill(Path(ellipseIn: rect),
+                         with: .color(isOnTarget ? .green : .cyan.opacity(0.85)))
         }
     }
 
-    /// The on-screen ring radius matching the normalized hit tolerance.
-    private func ringRadius(in viewSize: CGSize) -> CGFloat {
+    /// The on-screen distance matching the normalized "on target" tolerance.
+    private func onTargetRadius(in viewSize: CGSize) -> CGFloat {
         let imageSize = pose.imageSize
         guard imageSize.width > 0, imageSize.height > 0 else { return 0 }
         let scale = max(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
