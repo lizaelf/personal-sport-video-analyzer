@@ -108,6 +108,26 @@ struct SkeletonOverlayView: View {
             context.fill(Path(ellipseIn: rect),
                          with: .color(isOnTarget ? .green : .pink))
         }
+
+        // Static knee-target circles: the exact spots (from the reference
+        // video, scaled to this athlete) the knees should reach at the bottom.
+        // The circle radius is the hit tolerance, so "knee inside the circle"
+        // is literally the goal; it fills green when achieved.
+        let kneeRadius = tolerance
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftKnee, .rightKnee] {
+            guard let target = reference.targets[joint] else { continue }
+            let center = viewPoint(for: target, in: size)
+            let rect = CGRect(x: center.x - kneeRadius, y: center.y - kneeRadius,
+                              width: kneeRadius * 2, height: kneeRadius * 2)
+            let circle = Path(ellipseIn: rect)
+            let isOnTarget = onTarget[joint] ?? false
+            if isOnTarget {
+                context.fill(circle, with: .color(.green.opacity(0.4)))
+            }
+            context.stroke(circle,
+                           with: .color(isOnTarget ? .green : .white),
+                           style: StrokeStyle(lineWidth: 10))
+        }
     }
 
     /// The on-screen distance matching the normalized "on target" tolerance.
