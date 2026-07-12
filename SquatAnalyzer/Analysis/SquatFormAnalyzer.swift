@@ -26,6 +26,10 @@ struct AnalysisResult {
     var repCount: Int
     var newFeedback: Feedback?
     var isBodyVisible: Bool
+    /// True on the frame the athlete returns to standing and a rep is counted.
+    var repJustCompleted = false
+    /// True when the rep that just finished had form issues or end-of-rep feedback.
+    var completedRepHadIssues = false
 }
 
 /// Tracks the squat through its phases using the knee angle and evaluates
@@ -68,6 +72,8 @@ struct SquatFormAnalyzer {
         }
 
         var feedback: Feedback?
+        var repJustCompleted = false
+        var completedRepHadIssues = false
         let previous = previousKneeAngle ?? kneeAngle
         previousKneeAngle = kneeAngle
 
@@ -100,7 +106,10 @@ struct SquatFormAnalyzer {
             if kneeAngle > standingThreshold {
                 phase = .standing
                 repCount += 1
+                repJustCompleted = true
+                completedRepHadIssues = !issuesThisRep.isEmpty
                 feedback = repSummary()
+                if feedback != nil { completedRepHadIssues = true }
             } else {
                 feedback = movementFeedback(pose: pose, kneeAngle: kneeAngle)
             }
@@ -110,7 +119,9 @@ struct SquatFormAnalyzer {
                               kneeAngle: kneeAngle,
                               repCount: repCount,
                               newFeedback: feedback,
-                              isBodyVisible: bodyVisible)
+                              isBodyVisible: bodyVisible,
+                              repJustCompleted: repJustCompleted,
+                              completedRepHadIssues: completedRepHadIssues)
     }
 
     mutating func reset() {

@@ -73,9 +73,10 @@ struct SkeletonOverlayView: View {
 
     /// Static target shapes at the bottom-of-squat positions measured from
     /// the reference video and scaled to this athlete: one pill spanning both
-    /// hip targets, one circle per knee (the spots to drive into — each fills
-    /// green when hit), and a tiny dot per shoulder and per foot marking the
-    /// standing-level positions (shoulders stay upright, feet stay planted).
+    /// hip targets, one circle per shoulder and per knee (the spots to drive
+    /// into — each fills green when hit), and a tiny dot per shoulder and per
+    /// foot marking the standing-level positions (shoulder starting height,
+    /// planted foot position).
     private func drawReferenceTargets(_ reference: ReferencePose,
                                       in context: inout GraphicsContext,
                                       size: CGSize) {
@@ -95,7 +96,7 @@ struct SkeletonOverlayView: View {
         drawHipBar(reference, tolerance: tolerance, barRadius: hipBarRadius,
                   in: &context, size: size)
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftKnee, .rightKnee] {
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftShoulder, .rightShoulder, .leftKnee, .rightKnee] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
             let isOnTarget: Bool
@@ -117,7 +118,15 @@ struct SkeletonOverlayView: View {
                            style: StrokeStyle(lineWidth: 6))
         }
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftShoulder, .rightShoulder, .leftAnkle, .rightAnkle] {
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftShoulder, .rightShoulder] {
+            guard let marker = reference.standingMarkers[joint] else { continue }
+            let center = viewPoint(for: marker, in: size)
+            let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,
+                              width: standingMarkerRadius * 2, height: standingMarkerRadius * 2)
+            context.fill(Path(ellipseIn: rect), with: .color(.yellow))
+        }
+
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftAnkle, .rightAnkle] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
             let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,

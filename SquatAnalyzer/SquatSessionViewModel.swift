@@ -46,6 +46,9 @@ final class SquatSessionViewModel: ObservableObject {
     private var feedbackDismissTask: Task<Void, Never>?
     private let speaker = FeedbackSpeaker()
 
+    /// After a rep with form issues, the count is spoken only on the next clean rep.
+    private var deferRepCountSpeech = false
+
     /// Consecutive frames without a usable pose before the "step back" hint shows.
     private var framesWithoutPose = 0
 
@@ -104,6 +107,7 @@ final class SquatSessionViewModel: ObservableObject {
         referenceCalculator.reset()
         frame = FrameState()
         feedback = nil
+        deferRepCountSpeech = false
         speaker.stop()
     }
 
@@ -129,8 +133,6 @@ final class SquatSessionViewModel: ObservableObject {
                                                             phase: result.phase,
                                                             kneeAngle: result.kneeAngle)
 
-            let previousRepCount = self.frame.repCount
-
             // One atomic publish per frame.
             self.frame = FrameState(pose: smoothedPose,
                                     phase: result.phase,
@@ -141,10 +143,27 @@ final class SquatSessionViewModel: ObservableObject {
 
             if let newFeedback = result.newFeedback {
                 self.show(newFeedback)
-            } else if result.repCount > previousRepCount {
-                speaker.speak(repCountUtterance(result.repCount))
+                if result.repJustCompleted || result.completedRepHadIssues {
+                    self.deferRepCountSpeech = true
+                }
+            } else if result.repJustCompleted {
+                self.handleRepCompleted(count: result.repCount,
+                                       hadIssues: result.completedRepHadIssues)
             }
         }
+    }
+
+    private func handleRepCompleted(count: Int, hadIssues: Bool) {
+        if hadIssues {
+            deferRepCountSpeech = true
+            return
+        }
+        guard deferRepCountSpeech else {
+            speaker.speakRepCount(repCountUtterance(count))
+            return
+        }
+        deferRepCountSpeech = false
+        speaker.speakRepCount(repCountUtterance(count))
     }
 
     private func repCountUtterance(_ count: Int) -> String {
@@ -156,7 +175,7 @@ final class SquatSessionViewModel: ObservableObject {
 
     private func show(_ newFeedback: Feedback) {
         feedback = newFeedback
-        speaker.speak(newFeedback.message)
+        speaker.speakFeedback(newFeedback.message)
         feedbackDismissTask?.cancel()
         feedbackDismissTask = Task {
             try? await Task.sleep(for: .seconds(3))

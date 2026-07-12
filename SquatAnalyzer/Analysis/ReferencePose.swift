@@ -4,7 +4,12 @@ import Vision
 /// Target joint positions for the bottom of a proper squat, drawn as a ghost
 /// posture outline the athlete steers into while descending.
 struct ReferencePose: Equatable {
+    /// Bottom-of-squat targets to steer into: hip, knee, shoulder, and the
+    /// (unmoving) ankle.
     var targets: [VNHumanBodyPoseObservation.JointName: CGPoint]
+    /// Fixed standing-level markers: the shoulder's starting height, shown
+    /// alongside the bottom-of-squat shoulder target for reference.
+    var standingMarkers: [VNHumanBodyPoseObservation.JointName: CGPoint]
 
     /// Normalized distance (fraction of image height) within which a live
     /// joint counts as "on target".
@@ -39,6 +44,11 @@ struct ReferencePoseCalculator {
     private let kneeOutward: CGFloat = 0.08
     /// Hips sink this far below the standing knee at the bottom.
     private let hipDrop: CGFloat = 0.28
+    /// Shoulders sink this far below the standing knee at the bottom — more
+    /// than the hips, since the chest/torso continues down and leans forward
+    /// slightly, but well short of hip level so the chest stays visibly up.
+    /// Rough estimate from reference footage — expect to tune after trying it.
+    private let shoulderDrop: CGFloat = 0.40
 
     private var baseline: [JointName: CGPoint] = [:]
     private var baselineFrames = 0
@@ -54,9 +64,9 @@ struct ReferencePoseCalculator {
         }
         guard baselineFrames >= minBaselineFrames else { return nil }
 
-        let targets = frontTargets()
+        let (targets, standingMarkers) = frontTargets()
         guard !targets.isEmpty else { return nil }
-        return ReferencePose(targets: targets)
+        return ReferencePose(targets: targets, standingMarkers: standingMarkers)
     }
 
     mutating func reset() {
@@ -77,15 +87,18 @@ struct ReferencePoseCalculator {
         baselineFrames = min(baselineFrames + 1, 1000)
     }
 
-    /// Shoulders stay upright at standing height (chest up), hips sink toward
-    /// knee height, knees track down and out over the feet, feet stay planted.
-    /// All offsets are the measured reference ratios scaled by the athlete's
-    /// own shin length, anchored at their standing knee and foot positions.
-    private func frontTargets() -> [JointName: CGPoint] {
-        guard let leftAnkle = baseline[.leftAnkle], let rightAnkle = baseline[.rightAnkle] else { return [:] }
+    /// Shoulders sink partway down (chest continues lowering, though less
+    /// than the hips), hips sink toward knee height, knees track down and out
+    /// over the feet, feet stay planted. All offsets are the measured
+    /// reference ratios scaled by the athlete's own shin length, anchored at
+    /// their standing knee and foot positions. Shoulders also get a fixed
+    /// standing-level marker, so both the start and target heights are visible.
+    private func frontTargets() -> (targets: [JointName: CGPoint], standingMarkers: [JointName: CGPoint]) {
+        guard let leftAnkle = baseline[.leftAnkle], let rightAnkle = baseline[.rightAnkle] else { return ([:], [:]) }
         let midlineX = (leftAnkle.x + rightAnkle.x) / 2
 
         var targets: [JointName: CGPoint] = [:]
+        var standingMarkers: [JointName: CGPoint] = [:]
         let chains: [(JointName, JointName, JointName, JointName)] = [
             (.leftShoulder, .leftHip, .leftKnee, .leftAnkle),
             (.rightShoulder, .rightHip, .rightKnee, .rightAnkle),
@@ -100,9 +113,10 @@ struct ReferencePoseCalculator {
                                     y: k.y + shin * kneeDrop)
             targets[ankle] = a
             if let s = baseline[shoulder] {
-                targets[shoulder] = s
+                standingMarkers[shoulder] = s
+                targets[shoulder] = CGPoint(x: s.x, y: k.y + shin * shoulderDrop)
             }
         }
-        return targets
+        return (targets, standingMarkers)
     }
 }
