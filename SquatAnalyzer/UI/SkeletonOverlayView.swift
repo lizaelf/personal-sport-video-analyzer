@@ -94,19 +94,19 @@ struct SkeletonOverlayView: View {
             path.move(to: viewPoint(for: a, in: size))
             path.addLine(to: viewPoint(for: b, in: size))
             context.stroke(path,
-                           with: .color(bothOnTarget ? .green : .cyan.opacity(0.85)),
-                           style: StrokeStyle(lineWidth: 4, lineCap: .round,
-                                              dash: bothOnTarget ? [] : [8, 6]))
+                           with: .color(bothOnTarget ? .green : .pink),
+                           style: StrokeStyle(lineWidth: 9, lineCap: .round,
+                                              dash: bothOnTarget ? [] : [10, 7]))
         }
 
         for (joint, target) in reference.targets {
             let center = viewPoint(for: target, in: size)
             let isOnTarget = onTarget[joint] ?? false
-            let radius: CGFloat = 6
+            let radius: CGFloat = 10
             let rect = CGRect(x: center.x - radius, y: center.y - radius,
                               width: radius * 2, height: radius * 2)
             context.fill(Path(ellipseIn: rect),
-                         with: .color(isOnTarget ? .green : .cyan.opacity(0.85)))
+                         with: .color(isOnTarget ? .green : .pink))
         }
     }
 
