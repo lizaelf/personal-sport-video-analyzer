@@ -43,6 +43,10 @@ struct ReferencePoseCalculator {
     private let kneeOutward: CGFloat = 0.08
     /// Hips sink this far below the standing knee at the bottom.
     private let hipDrop: CGFloat = 0.15
+    /// Feet stance width (ankle-to-ankle) as a multiple of the athlete's own
+    /// shoulder width, measured from the reference photo: feet planted
+    /// noticeably wider than the shoulders.
+    private let stanceWidthRatio: CGFloat = 1.7
 
     private var baseline: [JointName: CGPoint] = [:]
     private var baselineFrames = 0
@@ -88,12 +92,30 @@ struct ReferencePoseCalculator {
     /// hits both the hip and shoulder targets keeps the chest up rather than
     /// folding forward. Shoulders also get a fixed standing-level marker, so
     /// both the start and target heights are visible.
+    ///
+    /// The foot target is a stance-width guide rather than a bottom-of-squat
+    /// target: it sits at the athlete's own standing ankle height but at an
+    /// x-position derived from their shoulder width, so it shows where to
+    /// plant their feet before descending (per the reference photo, wider
+    /// than shoulder-width) rather than just echoing wherever they're
+    /// currently standing.
     private func frontTargets() -> (targets: [JointName: CGPoint], standingMarkers: [JointName: CGPoint]) {
         guard let leftAnkle = baseline[.leftAnkle], let rightAnkle = baseline[.rightAnkle] else { return ([:], [:]) }
         let midlineX = (leftAnkle.x + rightAnkle.x) / 2
 
         var targets: [JointName: CGPoint] = [:]
         var standingMarkers: [JointName: CGPoint] = [:]
+
+        if let ls = baseline[.leftShoulder], let rs = baseline[.rightShoulder] {
+            let shoulderMidX = (ls.x + rs.x) / 2
+            let halfStance = AngleMath.distance(ls, rs) * stanceWidthRatio / 2
+            targets[.leftAnkle] = CGPoint(x: shoulderMidX - halfStance, y: leftAnkle.y)
+            targets[.rightAnkle] = CGPoint(x: shoulderMidX + halfStance, y: rightAnkle.y)
+        } else {
+            targets[.leftAnkle] = leftAnkle
+            targets[.rightAnkle] = rightAnkle
+        }
+
         let chains: [(JointName, JointName, JointName, JointName)] = [
             (.leftShoulder, .leftHip, .leftKnee, .leftAnkle),
             (.rightShoulder, .rightHip, .rightKnee, .rightAnkle),
@@ -107,7 +129,6 @@ struct ReferencePoseCalculator {
             targets[hip] = hipTarget
             targets[knee] = CGPoint(x: a.x + outward * shin * kneeOutward,
                                     y: k.y + shin * kneeDrop)
-            targets[ankle] = a
             if let s = baseline[shoulder] {
                 standingMarkers[shoulder] = s
                 let torsoLength = AngleMath.distance(s, h)
