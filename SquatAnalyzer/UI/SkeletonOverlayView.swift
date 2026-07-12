@@ -53,10 +53,10 @@ struct SkeletonOverlayView: View {
         .allowsHitTesting(false)
     }
 
-    /// Static target circles at the bottom-of-squat positions measured from
-    /// the reference video and scaled to this athlete: one circle per hip and
-    /// per knee (the spots to drive into — each fills green when hit) and a
-    /// tiny dot per foot (where the feet should stay planted).
+    /// Static target shapes at the bottom-of-squat positions measured from
+    /// the reference video and scaled to this athlete: one pill spanning both
+    /// hip targets, one circle per knee (the spots to drive into — each fills
+    /// green when hit), and a tiny dot per foot (where the feet should stay planted).
     private func drawReferenceTargets(_ reference: ReferencePose,
                                       in context: inout GraphicsContext,
                                       size: CGSize) {
@@ -66,7 +66,10 @@ struct SkeletonOverlayView: View {
         let targetRadius = tolerance * 0.6
         let footRadius = targetRadius / 10
 
-        for joint: VNHumanBodyPoseObservation.JointName in [.leftHip, .rightHip, .leftKnee, .rightKnee] {
+        drawHipBar(reference, tolerance: tolerance, targetRadius: targetRadius,
+                  in: &context, size: size)
+
+        for joint: VNHumanBodyPoseObservation.JointName in [.leftKnee, .rightKnee] {
             guard let target = reference.targets[joint] else { continue }
             let center = viewPoint(for: target, in: size)
             let isOnTarget: Bool
@@ -95,6 +98,44 @@ struct SkeletonOverlayView: View {
                               width: footRadius * 2, height: footRadius * 2)
             context.fill(Path(ellipseIn: rect), with: .color(.white))
         }
+    }
+
+    /// One solid pill (rounded rectangle, corner radius 999 → fully rounded
+    /// ends) spanning both hip targets, instead of two separate circles.
+    /// Fills green once both hips are on target.
+    private func drawHipBar(_ reference: ReferencePose,
+                            tolerance: CGFloat,
+                            targetRadius: CGFloat,
+                            in context: inout GraphicsContext,
+                            size: CGSize) {
+        guard
+            let leftTarget = reference.targets[.leftHip],
+            let rightTarget = reference.targets[.rightHip]
+        else { return }
+
+        let leftPoint = viewPoint(for: leftTarget, in: size)
+        let rightPoint = viewPoint(for: rightTarget, in: size)
+
+        func isOnTarget(_ joint: VNHumanBodyPoseObservation.JointName, target: CGPoint) -> Bool {
+            guard let live = pose[joint] else { return false }
+            let livePoint = viewPoint(for: live, in: size)
+            return hypot(livePoint.x - target.x, livePoint.y - target.y) <= tolerance
+        }
+        let bothOnTarget = isOnTarget(.leftHip, target: leftPoint) && isOnTarget(.rightHip, target: rightPoint)
+
+        let minX = min(leftPoint.x, rightPoint.x) - targetRadius
+        let maxX = max(leftPoint.x, rightPoint.x) + targetRadius
+        let midY = (leftPoint.y + rightPoint.y) / 2
+        let rect = CGRect(x: minX, y: midY - targetRadius,
+                          width: maxX - minX, height: targetRadius * 2)
+        let pill = Path(roundedRect: rect, cornerRadius: 999)
+
+        if bothOnTarget {
+            context.fill(pill, with: .color(.green.opacity(0.4)))
+        }
+        context.stroke(pill,
+                       with: .color(bothOnTarget ? .green : .white),
+                       style: StrokeStyle(lineWidth: 6))
     }
 
     /// The on-screen distance matching the normalized "on target" tolerance.
