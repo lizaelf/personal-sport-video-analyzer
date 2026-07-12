@@ -39,19 +39,15 @@ struct SkeletonOverlayView: View {
 
             let targetRadius = onTargetRadius(in: size) * 0.6
             let hipBarRadius = targetRadius * 0.35
-            let shoulderRadius: CGFloat = 7
 
             for (name, point) in pose.joints {
                 guard name != .leftHip, name != .rightHip else { continue }
                 let center = viewPoint(for: point, in: size)
 
                 if JointColors.shoulderJoints.contains(name) {
-                    let rect = CGRect(x: center.x - shoulderRadius, y: center.y - shoulderRadius,
-                                      width: shoulderRadius * 2, height: shoulderRadius * 2)
-                    let dot = Path(ellipseIn: rect)
-                    context.fill(dot, with: .color(JointColors.shoulder))
-                    context.stroke(dot, with: .color(.white.opacity(0.9)),
-                                   style: StrokeStyle(lineWidth: 2))
+                    let rect = CGRect(x: center.x - targetRadius, y: center.y - targetRadius,
+                                      width: targetRadius * 2, height: targetRadius * 2)
+                    context.fill(Path(ellipseIn: rect), with: .color(JointColors.shoulder))
                     continue
                 }
 
