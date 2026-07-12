@@ -50,7 +50,7 @@ struct ContentView: View {
             cameraPreview
 
             if let pose = viewModel.frame.pose {
-                SkeletonOverlayView(pose: pose)
+                SkeletonOverlayView(pose: pose, reference: viewModel.frame.reference)
                     .ignoresSafeArea()
             }
 

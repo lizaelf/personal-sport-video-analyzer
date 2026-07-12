@@ -8,6 +8,8 @@ import Vision
 /// skeleton aligned with the video.
 struct SkeletonOverlayView: View {
     let pose: DetectedPose
+    /// Bottom-position targets, drawn as rings the athlete steers into.
+    var reference: ReferencePose?
 
     private static let bones: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
         (.leftShoulder, .rightShoulder),
@@ -25,6 +27,10 @@ struct SkeletonOverlayView: View {
 
     var body: some View {
         Canvas { context, size in
+            if let reference {
+                drawReferenceRings(reference, in: &context, size: size)
+            }
+
             for (from, to) in Self.bones {
                 guard let a = pose[from], let b = pose[to] else { continue }
                 var path = Path()
@@ -45,6 +51,45 @@ struct SkeletonOverlayView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// Dashed rings at each target joint position. A ring turns green and fills
+    /// when the matching live joint is inside it, so the athlete can steer
+    /// their posture into the targets mid-rep.
+    private func drawReferenceRings(_ reference: ReferencePose,
+                                    in context: inout GraphicsContext,
+                                    size: CGSize) {
+        let radius = ringRadius(in: size)
+        guard radius > 0 else { return }
+
+        for (joint, target) in reference.targets {
+            let center = viewPoint(for: target, in: size)
+            let onTarget: Bool
+            if let live = pose[joint] {
+                let livePoint = viewPoint(for: live, in: size)
+                onTarget = hypot(livePoint.x - center.x, livePoint.y - center.y) <= radius
+            } else {
+                onTarget = false
+            }
+
+            let rect = CGRect(x: center.x - radius, y: center.y - radius,
+                              width: radius * 2, height: radius * 2)
+            let ring = Path(ellipseIn: rect)
+            if onTarget {
+                context.fill(ring, with: .color(.green.opacity(0.25)))
+            }
+            context.stroke(ring,
+                           with: .color(onTarget ? .green : .cyan.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 3, dash: [6, 4]))
+        }
+    }
+
+    /// The on-screen ring radius matching the normalized hit tolerance.
+    private func ringRadius(in viewSize: CGSize) -> CGFloat {
+        let imageSize = pose.imageSize
+        guard imageSize.width > 0, imageSize.height > 0 else { return 0 }
+        let scale = max(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
+        return ReferencePose.tolerance * imageSize.height * scale
     }
 
     /// Maps a normalized image point into view coordinates under aspect-fill.

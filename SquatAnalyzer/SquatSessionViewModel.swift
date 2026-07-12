@@ -14,6 +14,8 @@ struct FrameState: Equatable {
     var kneeAngle: Double?
     var repCount = 0
     var isBodyVisible = false
+    /// Bottom-position joint targets ("reference zones"), once calibrated.
+    var reference: ReferencePose?
 }
 
 /// Wires the pipeline together:
@@ -40,6 +42,7 @@ final class SquatSessionViewModel: ObservableObject {
     private nonisolated let detector = PoseDetector()
     private var smoother = PoseSmoother()
     private var analyzer = SquatFormAnalyzer()
+    private var referenceCalculator = ReferencePoseCalculator()
     private var feedbackDismissTask: Task<Void, Never>?
     private let speaker = FeedbackSpeaker()
 
@@ -98,6 +101,7 @@ final class SquatSessionViewModel: ObservableObject {
     func resetSession() {
         analyzer.reset()
         smoother.reset()
+        referenceCalculator.reset()
         frame = FrameState()
         feedback = nil
         speaker.stop()
@@ -121,6 +125,9 @@ final class SquatSessionViewModel: ObservableObject {
 
             let smoothedPose = self.smoother.smooth(detected)
             let result = self.analyzer.analyze(smoothedPose)
+            let reference = self.referenceCalculator.update(pose: smoothedPose,
+                                                            phase: result.phase,
+                                                            kneeAngle: result.kneeAngle)
 
             let previousRepCount = self.frame.repCount
 
@@ -129,7 +136,8 @@ final class SquatSessionViewModel: ObservableObject {
                                     phase: result.phase,
                                     kneeAngle: result.kneeAngle,
                                     repCount: result.repCount,
-                                    isBodyVisible: result.isBodyVisible)
+                                    isBodyVisible: result.isBodyVisible,
+                                    reference: reference)
 
             if let newFeedback = result.newFeedback {
                 self.show(newFeedback)

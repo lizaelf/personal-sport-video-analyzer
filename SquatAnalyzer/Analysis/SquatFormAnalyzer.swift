@@ -47,6 +47,10 @@ struct SquatFormAnalyzer {
     private let ruleMaxKneeAngle = 130.0
 
     private let kneeValgusRatio = 0.8
+    /// Knees wider than this multiple of ankle width are flagged.
+    private let kneeTooWideRatio = 1.35
+    /// Neck angle (nose–neck–shoulders) below this means the head is dropped.
+    private let headForwardMinAngle = 145.0
 
     private(set) var phase: SquatPhase = .standing
     private(set) var repCount = 0
@@ -137,6 +141,22 @@ struct SquatFormAnalyzer {
                             severity: .error)
         }
 
+        if let ratio = kneeSeparationRatio(of: pose),
+           ratio > kneeTooWideRatio,
+           kneeAngle < ruleMaxKneeAngle,
+           issuesThisRep.insert("wideKnees").inserted {
+            return Feedback(message: "Коліна занадто розведені. Тримай їх над стопами.",
+                            severity: .warning)
+        }
+
+        if let headAngle = headForwardAngle(of: pose),
+           headAngle < headForwardMinAngle,
+           kneeAngle < ruleMaxKneeAngle,
+           issuesThisRep.insert("headDown").inserted {
+            return Feedback(message: "Тримай голову піднятою і дивись перед собою.",
+                            severity: .warning)
+        }
+
         return nil
     }
 
@@ -175,5 +195,20 @@ struct SquatFormAnalyzer {
         let ankleSeparation = AngleMath.distance(leftAnkle, rightAnkle)
         guard ankleSeparation > 0.01 else { return nil }
         return AngleMath.distance(leftKnee, rightKnee) / ankleSeparation
+    }
+
+    /// Head posture: angle at the neck between the nose and shoulder midpoint.
+    /// Smaller values mean the head is dropped and not looking forward.
+    private func headForwardAngle(of pose: DetectedPose) -> Double? {
+        guard
+            let nose = pose[.nose],
+            let neck = pose[.neck],
+            let leftShoulder = pose[.leftShoulder],
+            let rightShoulder = pose[.rightShoulder]
+        else { return nil }
+
+        let shoulderMid = CGPoint(x: (leftShoulder.x + rightShoulder.x) / 2,
+                                  y: (leftShoulder.y + rightShoulder.y) / 2)
+        return AngleMath.angle(nose, vertex: neck, shoulderMid)
     }
 }
