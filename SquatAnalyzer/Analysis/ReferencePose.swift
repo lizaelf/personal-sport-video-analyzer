@@ -27,15 +27,18 @@ struct ReferencePoseCalculator {
     private let minBaselineFrames = 10
     private let alpha: CGFloat = 0.2
 
-    // Bottom-position geometry measured from the reference squat video
-    // (standing shin ≈ 291 px there), expressed as fractions of the athlete's
-    // own shin length so the targets scale to their body and camera distance.
+    // Bottom-position geometry, expressed as fractions of the athlete's own
+    // shin length so the targets scale to their body and camera distance.
+    // Tuned down from the original reference-video measurement (0.48/0.34),
+    // which pointed at a much deeper squat than a standard "thighs parallel"
+    // depth and felt too low on real devices — hip target now sits just
+    // above the knee target (parallel), not noticeably below it.
     /// Knee sinks this far below the standing knee at the bottom.
-    private let kneeDrop: CGFloat = 0.48
+    private let kneeDrop: CGFloat = 0.32
     /// Knee tracks this far outside the ankle (over the foot) at the bottom.
     private let kneeOutward: CGFloat = 0.08
     /// Hips sink this far below the standing knee at the bottom.
-    private let hipDrop: CGFloat = 0.34
+    private let hipDrop: CGFloat = 0.28
 
     private var baseline: [JointName: CGPoint] = [:]
     private var baselineFrames = 0

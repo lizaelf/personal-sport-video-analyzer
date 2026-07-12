@@ -83,9 +83,10 @@ struct SkeletonOverlayView: View {
         guard tolerance > 0 else { return }
 
         let targetRadius = tolerance * 0.6
-        // Small fixed markers for standing-level joints (shoulders, feet) —
-        // they don't move during the squat, so a tiny dot is enough.
-        let standingMarkerRadius = targetRadius / 10
+        // Fixed markers for standing-level joints (shoulders, feet) — they
+        // don't move during the squat. Sized close to the knee radius and
+        // colored yellow so they're clearly visible against any background.
+        let standingMarkerRadius = targetRadius * 0.5
         // Smaller half-height than the knee radius, so the hip pill reads as
         // a flat rectangle instead of degenerating into a circle at a normal
         // (narrower) stance where hip separation is comparable to the radius.
@@ -121,7 +122,7 @@ struct SkeletonOverlayView: View {
             let center = viewPoint(for: target, in: size)
             let rect = CGRect(x: center.x - standingMarkerRadius, y: center.y - standingMarkerRadius,
                               width: standingMarkerRadius * 2, height: standingMarkerRadius * 2)
-            context.fill(Path(ellipseIn: rect), with: .color(.white))
+            context.fill(Path(ellipseIn: rect), with: .color(.yellow))
         }
     }
 
