@@ -2,14 +2,17 @@ import AVFoundation
 
 /// Speaks form feedback aloud during a workout.
 @MainActor
-final class FeedbackSpeaker: NSObject, AVSpeechSynthesizerDelegate {
+final class FeedbackSpeaker {
     private let synthesizer = AVSpeechSynthesizer()
+    private let delegateBridge = SynthesizerDelegateBridge()
     private var audioSessionConfigured = false
     private var queuedMessage: String?
 
-    override init() {
-        super.init()
-        synthesizer.delegate = self
+    init() {
+        delegateBridge.onFinish = { [weak self] in
+            Task { @MainActor in self?.speakQueuedIfNeeded() }
+        }
+        synthesizer.delegate = delegateBridge
     }
 
     var isSpeaking: Bool { synthesizer.isSpeaking }
@@ -36,13 +39,10 @@ final class FeedbackSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         synthesizer.stopSpeaking(at: .immediate)
     }
 
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            guard let next = self.queuedMessage else { return }
-            self.queuedMessage = nil
-            self.speakNow(next)
-        }
+    private func speakQueuedIfNeeded() {
+        guard let next = queuedMessage else { return }
+        queuedMessage = nil
+        speakNow(next)
     }
 
     private func speakNow(_ message: String) {
@@ -75,5 +75,17 @@ final class FeedbackSpeaker: NSObject, AVSpeechSynthesizerDelegate {
             voice.gender == .male
                 && languagePrefixes.contains { voice.language.hasPrefix($0) }
         }
+    }
+}
+
+/// NSObject bridge for `AVSpeechSynthesizerDelegate` — kept separate so the
+/// main speaker type stays a plain `@MainActor` class (mixing NSObject +
+/// `@MainActor` on the same type can crash at runtime).
+private final class SynthesizerDelegateBridge: NSObject, AVSpeechSynthesizerDelegate {
+    var onFinish: (() -> Void)?
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                           didFinish utterance: AVSpeechUtterance) {
+        onFinish?()
     }
 }
